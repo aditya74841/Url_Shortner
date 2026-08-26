@@ -58,13 +58,12 @@ export const getUrlStats = catchAsync(async (req, res) => {
 });
 
 /**
- * Register click endpoint
+ * Register click endpoint (Atomic Increment)
  * POST /api/v1/urls/:shortUrl/click
  */
 export const registerClickApi = catchAsync(async (req, res) => {
   const { shortUrl } = req.params;
-  const urlDoc = await UrlService.getByShortCode(shortUrl);
-  const updatedDoc = await UrlService.recordClick(urlDoc);
+  const updatedDoc = await UrlService.recordClick(shortUrl);
 
   res.status(200).json({
     status: "success",
@@ -73,13 +72,12 @@ export const registerClickApi = catchAsync(async (req, res) => {
 });
 
 /**
- * Perform HTTP Redirection
+ * Perform HTTP Redirection with Atomic Click Tracking
  * GET /:shortUrl
  */
 export const redirectToFullUrl = catchAsync(async (req, res) => {
   const { shortUrl } = req.params;
-  const urlDoc = await UrlService.getByShortCode(shortUrl);
-  await UrlService.recordClick(urlDoc);
+  const updatedDoc = await UrlService.recordClick(shortUrl);
 
-  res.redirect(302, urlDoc.full);
+  res.redirect(302, updatedDoc.full);
 });

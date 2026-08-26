@@ -55,12 +55,21 @@ class UrlService {
   }
 
   /**
-   * Increment click count (Stage 1 implementation; Stage 3 will make this atomic $inc)
+   * Atomically increment click count using MongoDB $inc
+   * Eliminates race conditions and lost updates under high concurrency.
+   * @param {string} shortCode
+   * @returns {Promise<Object>}
    */
-  static async recordClick(urlDoc) {
-    urlDoc.clicks++;
-    await urlDoc.save();
-    return urlDoc;
+  static async recordClick(shortCode) {
+    const updatedDoc = await ShortUrl.findOneAndUpdate(
+      { short: shortCode },
+      { $inc: { clicks: 1 } },
+      { new: true, runValidators: true }
+    );
+    if (!updatedDoc) {
+      throw new AppError("Short URL not found", 404);
+    }
+    return updatedDoc;
   }
 }
 
