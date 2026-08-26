@@ -11,7 +11,6 @@ const urlSchema = new mongoose.Schema(
     short: {
       type: String,
       required: true,
-      unique: true,
       default: () => generateShortCode(7),
     },
     clicks: {
@@ -24,5 +23,10 @@ const urlSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Explicit DB Indexing Strategy for O(1) / O(log N) lookups & efficient sorting
+urlSchema.index({ short: 1 }, { unique: true, name: "idx_short_code" });
+urlSchema.index({ full: 1 }, { unique: true, name: "idx_full_url" });
+urlSchema.index({ createdAt: -1 }, { name: "idx_created_at_desc" });
 
 export default mongoose.model("ShortUrl", urlSchema);
