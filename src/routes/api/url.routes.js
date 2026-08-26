@@ -7,7 +7,11 @@ router.route("/")
   .post(urlController.createUrl)
   .get(urlController.getAllUrls);
 
-router.get("/:shortUrl", urlController.getUrlStats);
+// Stats route
+router.get("/:shortUrl/stats", urlController.getUrlStats);
+
+// Click tracking API routes
+router.post("/:shortUrl/click", urlController.registerClickApi);
 router.post("/click/:shortUrl", urlController.registerClickApi);
 
 export default router;

@@ -1,6 +1,10 @@
 import UrlService from "../services/url.service.js";
 import catchAsync from "../utils/catchAsync.js";
 
+/**
+ * Create a new short URL
+ * POST /api/v1/urls
+ */
 export const createUrl = catchAsync(async (req, res) => {
   const { fullUrl } = req.body;
   const { urlDoc, created } = await UrlService.createShortUrl(fullUrl);
@@ -19,6 +23,10 @@ export const createUrl = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * Get all short URLs
+ * GET /api/v1/urls
+ */
 export const getAllUrls = catchAsync(async (req, res) => {
   const urls = await UrlService.getAllUrls();
   res.status(200).json({
@@ -28,6 +36,10 @@ export const getAllUrls = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * Get stats for a specific short code
+ * GET /api/v1/urls/:shortUrl/stats
+ */
 export const getUrlStats = catchAsync(async (req, res) => {
   const { shortUrl } = req.params;
   const urlDoc = await UrlService.getByShortCode(shortUrl);
@@ -35,14 +47,20 @@ export const getUrlStats = catchAsync(async (req, res) => {
   res.status(200).json({
     status: "success",
     data: {
+      id: urlDoc._id,
       full: urlDoc.full,
       short: urlDoc.short,
       clicks: urlDoc.clicks,
       createdAt: urlDoc.createdAt,
+      updatedAt: urlDoc.updatedAt,
     },
   });
 });
 
+/**
+ * Register click endpoint
+ * POST /api/v1/urls/:shortUrl/click
+ */
 export const registerClickApi = catchAsync(async (req, res) => {
   const { shortUrl } = req.params;
   const urlDoc = await UrlService.getByShortCode(shortUrl);
@@ -52,4 +70,16 @@ export const registerClickApi = catchAsync(async (req, res) => {
     status: "success",
     clicks: updatedDoc.clicks,
   });
+});
+
+/**
+ * Perform HTTP Redirection
+ * GET /:shortUrl
+ */
+export const redirectToFullUrl = catchAsync(async (req, res) => {
+  const { shortUrl } = req.params;
+  const urlDoc = await UrlService.getByShortCode(shortUrl);
+  await UrlService.recordClick(urlDoc);
+
+  res.redirect(302, urlDoc.full);
 });

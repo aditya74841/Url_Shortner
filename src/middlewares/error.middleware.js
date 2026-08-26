@@ -5,7 +5,7 @@ const globalErrorHandler = (err, req, res, next) => {
   err.status = err.status || "error";
 
   if (process.env.NODE_ENV !== "test") {
-    console.error(`[Error Handler] ${err.statusCode} - ${err.message}`, err.stack);
+    console.error(`[Error Handler] ${err.statusCode} - ${err.message}`);
   }
 
   // Handle Mongoose duplicate key error (code 11000)
@@ -20,21 +20,12 @@ const globalErrorHandler = (err, req, res, next) => {
     err = new AppError(`Invalid input data. ${errors.join(". ")}`, 400);
   }
 
-  // API response vs Web View response
-  const isApiRequest = req.originalUrl.startsWith("/api") || (req.accepts("json") && !req.accepts("html"));
-
-  if (isApiRequest) {
-    return res.status(err.statusCode).json({
-      status: err.status,
-      message: err.message,
-      ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
-    });
-  }
-
-  // Web View fallback response
-  return res.status(err.statusCode).send(
-    `<script>alert("${err.message.replace(/"/g, '\\"')}"); window.location.href = "/";</script>`
-  );
+  // Pure JSON API response
+  return res.status(err.statusCode).json({
+    status: err.status,
+    message: err.message,
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+  });
 };
 
 export default globalErrorHandler;
