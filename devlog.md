@@ -35,3 +35,37 @@ urlSchema.index({ createdAt: -1 }, { name: "idx_created_at_desc" });
 Also wrote one blog on MongoDB Index
 
 It gets the faster read than tradeisnal
+
+The Fouth step
+In this we implement the increment operater which increment the count of the clicks
+So previously what happens is we are using click++ in this what happen is there is race condition for incrementing the count of the clicks
+So suppose if 1000 users click the short url at same time then the count will not be incremented correctly
+
+So to resole the issue we are using the increment operater
+const updatedDoc = await ShortUrl.findOneAndUpdate(
+{ short: shortCode },
+{ $inc: { clicks: 1 } },
+{ new: true, runValidators: true }
+);
+
+The fifth step
+
+In this step we implement the cache in our application
+Using the redis and cluster mode
+
+We have implemented the redis for fater read
+
+======================================================
+🚀 REDIS CACHE BENCHMARK PERFORMANCE REPORT
+======================================================
+
+- MongoDB Query Latency (Cache Miss) : 4.289 ms
+- Redis Cache Latency (Cache Hit) : 0.147 ms
+- Performance Improvement : 29.2x Faster!
+
+If we can see it increase the performance 29.2x faster
+i want to write more about this
+
+For redis Url i am using upstash because it is giving us the free tier
+
+## THIS IS THE SIXTH PHASE OF THE URL SHORTNER PROJECT.

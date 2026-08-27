@@ -2,12 +2,12 @@ import ShortUrl from "../models/url.model.js";
 import AppError from "../utils/appError.js";
 import redis, { getIsRedisConnected } from "../config/redis.js";
 
-const DEFAULT_CACHE_TTL = parseInt(process.env.REDIS_CACHE_TTL || "86400", 10);
+const DEFAULT_CACHE_TTL = parseInt(process.env.REDIS_CACHE_TTL || "300", 10);
 
 class UrlService {
   /**
    * Normalize and validate URL format
-   * @param {string} url 
+   * @param {string} url
    * @returns {string}
    */
   static normalizeUrl(url) {
@@ -53,7 +53,7 @@ class UrlService {
 
   /**
    * Get URL by short code with Cache-Aside Strategy
-   * @param {string} shortCode 
+   * @param {string} shortCode
    * @returns {Promise<Object>}
    */
   static async getByShortCode(shortCode) {
@@ -112,7 +112,7 @@ class UrlService {
     const updatedDoc = await ShortUrl.findOneAndUpdate(
       { short: shortCode },
       { $inc: { clicks: 1 } },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     if (!updatedDoc) {

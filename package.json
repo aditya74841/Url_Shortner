@@ -10,7 +10,8 @@
     "devStart": "nodemon server.js",
     "verify-indexes": "node scripts/verifyIndexes.js",
     "test-concurrency": "node scripts/testConcurrency.js",
-    "test-cache": "node scripts/testCache.js"
+    "test-cache": "node scripts/testCache.js",
+    "test-rate-limit": "node scripts/testRateLimit.js"
   },
   "author": "",
   "license": "ISC",

@@ -1,10 +1,12 @@
 import express from "express";
 import * as urlController from "../../controllers/url.controller.js";
+import { strictWriteRateLimiter } from "../../middlewares/rateLimiter.middleware.js";
 
 const router = express.Router();
 
+// Apply strict rate limiting to URL creation (POST /api/v1/urls)
 router.route("/")
-  .post(urlController.createUrl)
+  .post(strictWriteRateLimiter, urlController.createUrl)
   .get(urlController.getAllUrls);
 
 // Stats route
