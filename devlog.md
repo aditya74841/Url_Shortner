@@ -159,3 +159,25 @@ All session state rate limits and queues are stored in Redis and MongoDB.
 So user request can land on any API worker node and get same response.
 
 We also added /health endpoint to check MongoDB Redis and queue status.
+
+## THIS IS THE TWELFTH PHASE OF THE URL SHORTNER PROJECT.
+
+In this phase we implement observability structured logging and request tracing
+
+Why console.log fails in production:
+1. It is synchronous and blocks the single thread Event Loop.
+2. It outputs plain text which cannot be searched in Grafana or Datadog.
+3. It has no request ID so you cannot trace errors across API routes and background workers.
+
+So to resolve this we implement three things:
+
+1. High performance Pino logger (src/utils/logger.js):
+It outputs non-blocking structured JSON logs.
+
+2. Correlation ID Middleware (X-Request-ID):
+Every request gets unique requestId (UUID).
+This requestId is attached to HTTP response headers and Redis queue events.
+
+3. End-to-End Tracing:
+When background worker processes click event it logs using exact same requestId.
+So developers can search 1 requestId and trace whole request lifecycle from API route to Redis queue to MongoDB write.

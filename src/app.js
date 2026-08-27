@@ -1,9 +1,13 @@
 import express from "express";
 import routes from "./routes/index.js";
 import globalErrorHandler from "./middlewares/error.middleware.js";
+import { requestTracingLogger } from "./middlewares/logger.middleware.js";
 import AppError from "./utils/appError.js";
 
 const app = express();
+
+// Global Request Tracing & Structured Logging Middleware
+app.use(requestTracingLogger);
 
 // Middleware
 app.use(express.urlencoded({ extended: false }));

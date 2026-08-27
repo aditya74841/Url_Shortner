@@ -98,8 +98,9 @@ export const redirectToFullUrl = catchAsync(async (req, res) => {
     shortCode: shortUrl,
     ip: clientIp,
     userAgent,
+    requestId: req.id,
     timestamp: Date.now(),
-  }).catch((err) => console.warn(`[Queue Error] ${err.message}`));
+  }).catch((err) => (req.log ? req.log.warn(`[Queue Error] ${err.message}`) : console.warn(`[Queue Error] ${err.message}`)));
 
   // 3. Return HTTP 302 Redirect instantly (< 1ms Latency!)
   res.redirect(302, urlDoc.full);

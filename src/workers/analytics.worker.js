@@ -1,6 +1,7 @@
 import ShortUrl from "../models/url.model.js";
 import { ClickQueueService } from "../services/queue.service.js";
 import UrlService from "../services/url.service.js";
+import { logger } from "../utils/logger.js";
 
 /**
  * Analytics Background Worker Class (Idempotent & Crash Resilient)
@@ -9,6 +10,7 @@ import UrlService from "../services/url.service.js";
  * - Idempotent Deduplication via Redis SET NX eventId locks
  * - Automatic Crash Recovery for stranded events
  * - Batch writes to MongoDB via bulkWrite()
+ * - Pino Structured Logging with Correlation IDs
  */
 export class AnalyticsWorker {
   constructor(options = {}) {
@@ -25,14 +27,14 @@ export class AnalyticsWorker {
   async start() {
     if (this.isRunning) return;
     this.isRunning = true;
-    console.log(`[Analytics Worker] Started idempotent background worker loop (Interval: ${this.intervalMs}ms, Batch Size: ${this.batchSize})`);
+    logger.info({ intervalMs: this.intervalMs, batchSize: this.batchSize }, `[Analytics Worker] Started idempotent background worker loop`);
 
     // Step 1: Automatically recover any stranded events from previous worker crashes
     await ClickQueueService.recoverStrandedEvents();
 
     this.timer = setInterval(() => {
       this.processBatch().catch((err) => {
-        console.error(`[Analytics Worker Error] Error processing batch: ${err.message}`);
+        logger.error({ err: err.message }, `[Analytics Worker Error] Error processing batch: ${err.message}`);
       });
     }, this.intervalMs);
   }
@@ -49,9 +51,9 @@ export class AnalyticsWorker {
       this.timer = null;
     }
 
-    console.log(`[Analytics Worker] Stopping worker... Processing final remaining events.`);
+    logger.info(`[Analytics Worker] Stopping worker... Processing final remaining events.`);
     await this.processBatch();
-    console.log(`[Analytics Worker] Worker stopped cleanly.`);
+    logger.info(`[Analytics Worker] Worker stopped cleanly.`);
   }
 
   /**
@@ -93,7 +95,7 @@ export class AnalyticsWorker {
           uniqueCount++;
         } else {
           duplicateCount++;
-          console.log(`[Analytics Worker] Skipped duplicate event: ${event.eventId} (shortCode: ${event.shortCode})`);
+          logger.info({ eventId: event.eventId, shortCode: event.shortCode, requestId: event.requestId }, `[Analytics Worker] Skipped duplicate event: ${event.eventId}`);
         }
       }
 
@@ -122,13 +124,16 @@ export class AnalyticsWorker {
       await ClickQueueService.acknowledgeBatch(rawPayloads);
 
       if (events.length > 0) {
-        console.log(`[Analytics Worker] Batch Complete: ${uniqueCount} unique events written to DB, ${duplicateCount} duplicate events filtered out.`);
+        logger.info(
+          { totalPayloads: events.length, uniqueEvents: uniqueCount, duplicatesFiltered: duplicateCount },
+          `[Analytics Worker] Batch Complete: ${uniqueCount} unique events written to DB, ${duplicateCount} duplicates filtered.`
+        );
       }
 
       this.isProcessing = false;
       return { processed: uniqueCount, duplicates: duplicateCount };
     } catch (err) {
-      console.error(`[Analytics Worker Error] Ingestion error: ${err.message}`);
+      logger.error({ err: err.message }, `[Analytics Worker Error] Ingestion error: ${err.message}`);
       this.isProcessing = false;
       return { processed: 0, duplicates: 0 };
     }

@@ -24,7 +24,7 @@ export class ClickQueueService {
    * @param {string} [eventData.userAgent] - Client User-Agent string
    * @param {number} [eventData.timestamp] - Epoch timestamp in milliseconds
    */
-  static async pushClickEvent({ eventId, shortCode, ip = "unknown", userAgent = "unknown", timestamp = Date.now() }) {
+  static async pushClickEvent({ eventId, shortCode, ip = "unknown", userAgent = "unknown", requestId, timestamp = Date.now() }) {
     if (!getIsRedisConnected()) return;
 
     try {
@@ -33,6 +33,7 @@ export class ClickQueueService {
         shortCode,
         ip,
         userAgent,
+        requestId,
         timestamp,
       });
 
@@ -57,6 +58,7 @@ export class ClickQueueService {
           shortCode: e.shortCode,
           ip: e.ip || "unknown",
           userAgent: e.userAgent || "unknown",
+          requestId: e.requestId,
           timestamp: e.timestamp || Date.now(),
         })
       );
