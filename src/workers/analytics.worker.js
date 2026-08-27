@@ -83,13 +83,15 @@ export class AnalyticsWorker {
       let uniqueCount = 0;
       let duplicateCount = 0;
 
-      // 2. Perform Idempotent Deduplication Check for each event
-      for (const event of events) {
+      // 2. Perform Pipelined Idempotent Deduplication Check for entire batch in 1 RTT
+      const eventIds = events.map((e) => e?.eventId);
+      const isNewEventFlags = await ClickQueueService.claimEventIdsBatch(eventIds);
+
+      for (let i = 0; i < events.length; i++) {
+        const event = events[i];
         if (!event || !event.shortCode) continue;
 
-        // Atomic deduplication check
-        const isNewEvent = await ClickQueueService.claimEventId(event.eventId);
-
+        const isNewEvent = isNewEventFlags[i];
         if (isNewEvent) {
           clickCountsMap[event.shortCode] = (clickCountsMap[event.shortCode] || 0) + 1;
           uniqueCount++;

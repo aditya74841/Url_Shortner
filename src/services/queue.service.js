@@ -78,20 +78,23 @@ export class ClickQueueService {
     if (!getIsRedisConnected()) return { rawPayloads: [], events: [] };
 
     try {
+      const pipeline = redis.pipeline();
+      for (let i = 0; i < batchSize; i++) {
+        pipeline.rpoplpush(CLICK_QUEUE_NAME, PROCESSING_QUEUE_NAME);
+      }
+
+      const results = await pipeline.exec();
       const rawPayloads = [];
       const events = [];
 
-      for (let i = 0; i < batchSize; i++) {
-        // Atomic RPOPLPUSH moves item from queue to processing queue
-        const rawPayload = await redis.rpoplpush(CLICK_QUEUE_NAME, PROCESSING_QUEUE_NAME);
-        if (!rawPayload) break; // Queue empty
+      for (const [err, rawPayload] of results) {
+        if (err || !rawPayload) continue;
 
         try {
           const parsed = JSON.parse(rawPayload);
           rawPayloads.push(rawPayload);
           events.push(parsed);
         } catch (e) {
-          // Remove malformed event payload from processing queue
           await redis.lrem(PROCESSING_QUEUE_NAME, 1, rawPayload);
         }
       }
@@ -118,6 +121,30 @@ export class ClickQueueService {
       return result === "OK";
     } catch (err) {
       return true; // Default to process if Redis fails
+    }
+  }
+
+  /**
+   * High-Performance Pipelined Deduplication Check for a batch of eventIds in 1 network RTT
+   * @param {Array<string>} eventIds
+   * @returns {Promise<Array<boolean>>} Array of booleans (true if new, false if duplicate)
+   */
+  static async claimEventIdsBatch(eventIds = []) {
+    if (!getIsRedisConnected() || eventIds.length === 0) return eventIds.map(() => true);
+    try {
+      const pipeline = redis.pipeline();
+      for (const id of eventIds) {
+        if (id) {
+          const key = `${PROCESSED_EVENT_PREFIX}${id}`;
+          pipeline.set(key, "1", "EX", DEDUP_TTL_SECONDS, "NX");
+        } else {
+          pipeline.ping(); // fallback placeholder
+        }
+      }
+      const results = await pipeline.exec();
+      return results.map(([err, res]) => !err && res === "OK");
+    } catch (err) {
+      return eventIds.map(() => true);
     }
   }
 

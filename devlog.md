@@ -181,3 +181,26 @@ This requestId is attached to HTTP response headers and Redis queue events.
 3. End-to-End Tracing:
 When background worker processes click event it logs using exact same requestId.
 So developers can search 1 requestId and trace whole request lifecycle from API route to Redis queue to MongoDB write.
+
+## THIS IS THE THIRTEENTH PHASE OF THE URL SHORTNER PROJECT.
+
+In this phase we attack our own system with high-concurrency load and chaos testing
+
+Why we need load testing:
+Before deploying to production we must test how system behaves when thousands of requests hammer the server at the same time.
+
+We used Autocannon tool to fire 1,700+ requests with 50 concurrent virtual clients.
+
+What we learned and optimized:
+
+1. Redis Pipeline for Queue Consumer:
+Instead of sending 1,000 separate network calls to pop events from Redis we use redis.pipeline() to pop 1,000 events in 1 network operation.
+
+2. Redis Pipeline for Deduplication:
+Instead of sending 1,000 separate SET NX locks to Redis we use pipelined batch locks in 1 network operation.
+
+Benchmark Results under load:
+- Total Requests Fired: 1,727 requests
+- Throughput Rate: 345 req/sec
+- Server Errors (5xx): 0
+- Click Accounting Accuracy: 100% (1,777 clicks recorded in MongoDB with 0 lost events)

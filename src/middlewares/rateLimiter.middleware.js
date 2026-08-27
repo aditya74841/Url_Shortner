@@ -17,8 +17,8 @@ export const createTokenBucketRateLimiter = ({
   message = "Too many requests. Token bucket exhausted.",
 }) => {
   return async (req, res, next) => {
-    // If Redis is unavailable, bypass rate limiter gracefully (Fallback)
-    if (!getIsRedisConnected()) {
+    // Allow rate limiter bypass during load/stress benchmarks
+    if (process.env.DISABLE_RATE_LIMIT === "true" || !getIsRedisConnected()) {
       return next();
     }
 
