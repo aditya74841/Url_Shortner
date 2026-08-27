@@ -117,3 +117,10 @@ Which will consume the queue and process the event
 Now into the next step we create consumer
 
 ## THIS IS THE EIGHTH PHASE OF THE URL SHORTNER PROJECT.
+
+In this i have create the cosumer that can consume the queue and process the event
+and bulkwrite the result into the database
+
+So 1000 events in 1 DB operation
+
+1,000 Clicks ──► 1 BulkWrite Operation ──► 1 Disk Write ──► Minimal CPU & Disk I/O Load!

@@ -3,26 +3,32 @@ import { ClickQueueService } from "../services/queue.service.js";
 import UrlService from "../services/url.service.js";
 
 /**
- * Analytics Background Worker Class
- * Consumes click events from Redis Queue, aggregates click counts in memory,
- * and executes high-throughput batch writes to MongoDB using bulkWrite().
+ * Analytics Background Worker Class (Idempotent & Crash Resilient)
+ * Features:
+ * - At-Least-Once Delivery via Redis RPOPLPUSH reliable queue
+ * - Idempotent Deduplication via Redis SET NX eventId locks
+ * - Automatic Crash Recovery for stranded events
+ * - Batch writes to MongoDB via bulkWrite()
  */
 export class AnalyticsWorker {
   constructor(options = {}) {
-    this.intervalMs = options.intervalMs || 3000; // Poll interval (default 3 sec)
-    this.batchSize = options.batchSize || 100;    // Max events per batch
+    this.intervalMs = options.intervalMs || 3000;
+    this.batchSize = options.batchSize || 100;
     this.timer = null;
     this.isRunning = false;
     this.isProcessing = false;
   }
 
   /**
-   * Starts the periodic background worker loop
+   * Starts periodic worker loop and runs crash recovery on boot
    */
-  start() {
+  async start() {
     if (this.isRunning) return;
     this.isRunning = true;
-    console.log(`[Analytics Worker] Started background worker loop (Interval: ${this.intervalMs}ms, Batch Size: ${this.batchSize})`);
+    console.log(`[Analytics Worker] Started idempotent background worker loop (Interval: ${this.intervalMs}ms, Batch Size: ${this.batchSize})`);
+
+    // Step 1: Automatically recover any stranded events from previous worker crashes
+    await ClickQueueService.recoverStrandedEvents();
 
     this.timer = setInterval(() => {
       this.processBatch().catch((err) => {
@@ -32,7 +38,7 @@ export class AnalyticsWorker {
   }
 
   /**
-   * Stops the worker loop gracefully
+   * Stops worker cleanly after flushing remaining events
    */
   async stop() {
     if (!this.isRunning) return;
@@ -44,76 +50,87 @@ export class AnalyticsWorker {
     }
 
     console.log(`[Analytics Worker] Stopping worker... Processing final remaining events.`);
-    
-    // Process any remaining events in queue before shutting down
     await this.processBatch();
     console.log(`[Analytics Worker] Worker stopped cleanly.`);
   }
 
   /**
-   * Single Batch Processing Step:
-   * 1. Pops up to `batchSize` events from Redis Queue (RPOP)
-   * 2. Groups click counts by shortCode in memory
-   * 3. Executes single MongoDB bulkWrite()
-   * 4. Updates Redis Cache entries for modified URLs
+   * Batch Ingestion Process with Deduplication & Reliability:
+   * 1. Pops reliable batch using RPOPLPUSH into processing queue
+   * 2. Checks eventId deduplication lock (SET NX) to skip duplicate events
+   * 3. Aggregates unique click counts by shortCode
+   * 4. Flushes to MongoDB via bulkWrite()
+   * 5. Acknowledges and removes processed batch from processing queue
    * 
-   * @returns {Promise<number>} Number of processed click events
+   * @returns {Promise<{ processed: number, duplicates: number }>} Batch processing report
    */
   async processBatch() {
-    // Avoid overlapping execution if previous batch processing is still in-flight
-    if (this.isProcessing) return 0;
+    if (this.isProcessing) return { processed: 0, duplicates: 0 };
     this.isProcessing = true;
 
     try {
-      // 1. Pop batch of events from Redis Queue
-      const events = await ClickQueueService.popBatchEvents(this.batchSize);
+      // 1. Pop reliable batch using RPOPLPUSH
+      const { rawPayloads, events } = await ClickQueueService.popReliableBatch(this.batchSize);
 
       if (!events || events.length === 0) {
         this.isProcessing = false;
-        return 0;
+        return { processed: 0, duplicates: 0 };
       }
 
-      // 2. Aggregate click counts by shortCode in memory
-      // Example: { "D1MaHG9": 45, "aB3x9K2": 55 }
       const clickCountsMap = {};
+      let uniqueCount = 0;
+      let duplicateCount = 0;
+
+      // 2. Perform Idempotent Deduplication Check for each event
       for (const event of events) {
-        if (event && event.shortCode) {
+        if (!event || !event.shortCode) continue;
+
+        // Atomic deduplication check
+        const isNewEvent = await ClickQueueService.claimEventId(event.eventId);
+
+        if (isNewEvent) {
           clickCountsMap[event.shortCode] = (clickCountsMap[event.shortCode] || 0) + 1;
+          uniqueCount++;
+        } else {
+          duplicateCount++;
+          console.log(`[Analytics Worker] Skipped duplicate event: ${event.eventId} (shortCode: ${event.shortCode})`);
         }
       }
 
       const shortCodes = Object.keys(clickCountsMap);
-      if (shortCodes.length === 0) {
-        this.isProcessing = false;
-        return 0;
+
+      // 3. Execute MongoDB bulkWrite if new unique events exist
+      if (shortCodes.length > 0) {
+        const bulkOperations = shortCodes.map((shortCode) => ({
+          updateOne: {
+            filter: { short: shortCode },
+            update: { $inc: { clicks: clickCountsMap[shortCode] } },
+          },
+        }));
+
+        await ShortUrl.bulkWrite(bulkOperations, { ordered: false });
+
+        // Refresh Redis cache for updated short codes
+        for (const shortCode of shortCodes) {
+          ShortUrl.findOne({ short: shortCode }).then((doc) => {
+            if (doc) UrlService.cacheUrlDoc(doc);
+          }).catch(() => {});
+        }
       }
 
-      // 3. Prepare MongoDB bulkWrite operations array
-      const bulkOperations = shortCodes.map((shortCode) => ({
-        updateOne: {
-          filter: { short: shortCode },
-          update: { $inc: { clicks: clickCountsMap[shortCode] } },
-        },
-      }));
+      // 4. Acknowledge and clear processing queue
+      await ClickQueueService.acknowledgeBatch(rawPayloads);
 
-      // 4. Execute single bulkWrite command against MongoDB
-      const bulkResult = await ShortUrl.bulkWrite(bulkOperations, { ordered: false });
-
-      // 5. Asynchronously refresh Redis cache for updated short codes
-      for (const shortCode of shortCodes) {
-        ShortUrl.findOne({ short: shortCode }).then((doc) => {
-          if (doc) UrlService.cacheUrlDoc(doc);
-        }).catch(() => {});
+      if (events.length > 0) {
+        console.log(`[Analytics Worker] Batch Complete: ${uniqueCount} unique events written to DB, ${duplicateCount} duplicate events filtered out.`);
       }
-
-      console.log(`[Analytics Worker] Processed ${events.length} click events across ${shortCodes.length} short URLs via MongoDB bulkWrite.`);
 
       this.isProcessing = false;
-      return events.length;
+      return { processed: uniqueCount, duplicates: duplicateCount };
     } catch (err) {
       console.error(`[Analytics Worker Error] Ingestion error: ${err.message}`);
       this.isProcessing = false;
-      return 0;
+      return { processed: 0, duplicates: 0 };
     }
   }
 }
