@@ -12,7 +12,8 @@
     "test-concurrency": "node scripts/testConcurrency.js",
     "test-cache": "node scripts/testCache.js",
     "test-rate-limit": "node scripts/testRateLimit.js",
-    "test-queue": "node scripts/testQueue.js"
+    "test-queue": "node scripts/testQueue.js",
+    "test-worker": "node scripts/testWorker.js"
   },
   "author": "",
   "license": "ISC",

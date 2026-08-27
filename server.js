@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import connectDB from "./src/config/db.js";
 import { initRedis } from "./src/config/redis.js";
 import app from "./src/app.js";
+import { analyticsWorker } from "./src/workers/analytics.worker.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,8 +19,11 @@ process.on("uncaughtException", (err) => {
 });
 
 // Connect Database & Cache
-connectDB();
-initRedis();
+await connectDB();
+await initRedis();
+
+// Start Analytics Background Worker Loop
+analyticsWorker.start();
 
 const PORT = process.env.PORT || 5000;
 
@@ -39,14 +43,16 @@ server.on("error", (err) => {
 // Handle unhandled promise rejections
 process.on("unhandledRejection", (err) => {
   console.error("UNHANDLED REJECTION! 💥 Shutting down...", err.name, err.message);
-  server.close(() => {
+  server.close(async () => {
+    await analyticsWorker.stop();
     process.exit(1);
   });
 });
 
 // SIGTERM graceful shutdown
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
   console.log("👋 SIGTERM RECEIVED. Shutting down gracefully...");
+  await analyticsWorker.stop();
   server.close(() => {
     console.log("💥 Process terminated!");
   });

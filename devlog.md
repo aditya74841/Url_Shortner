@@ -94,3 +94,26 @@ But The Token Bucket provide the controlled output
 and fixed window is simple every minute per request
 
 ## THIS IS THE SEVENTH PHASE OF THE URL SHORTNER PROJECT.
+
+In this we have implemented the redis queue and To do not unblock the user when user click the short url we directly return the response
+
+In this we have pushed the event into the queue and we have worker which will process the event
+
+In this we simply push the click event into the redis queue
+That is called producer
+
+So why we create this ?
+Because if 1000 persons click the short url at the same time then all 1000 will perform the I/O to the mongoDb backend and it slow all the 1000 request
+So by implementing the queue we can handle this situation
+
+But there is one issue not we have pushed the event to the queue but if we donot consume this queue SO it also remains in the queue
+and create a bottleneck
+
+1,000 Clicks ──► 1,000 DB Connections ──► 1,000 Disk Writes ──► High CPU & Disk I/O Bottleneck!
+
+So to reslove this we create a consumer
+Which will consume the queue and process the event
+
+Now into the next step we create consumer
+
+## THIS IS THE EIGHTH PHASE OF THE URL SHORTNER PROJECT.

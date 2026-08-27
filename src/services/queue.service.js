@@ -36,6 +36,21 @@ export class ClickQueueService {
   }
 
   /**
+   * Producer: Pushes multiple click analytics events in 1 Redis network operation
+   * @param {Array<Object>} eventsList
+   */
+  static async pushBatchEvents(eventsList = []) {
+    if (!getIsRedisConnected() || eventsList.length === 0) return;
+
+    try {
+      const payloads = eventsList.map((e) => JSON.stringify(e));
+      await redis.lpush(CLICK_QUEUE_NAME, ...payloads);
+    } catch (err) {
+      console.warn(`[ClickQueue Warning] Failed to push batch events: ${err.message}`);
+    }
+  }
+
+  /**
    * Queries the current total pending events in the Redis Queue
    * @returns {Promise<number>} Queue length
    */
