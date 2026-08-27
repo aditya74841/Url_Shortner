@@ -1,5 +1,8 @@
 import ShortUrl from "../models/url.model.js";
 import AppError from "../utils/appError.js";
+import redis, { getIsRedisConnected } from "../config/redis.js";
+
+const DEFAULT_CACHE_TTL = parseInt(process.env.REDIS_CACHE_TTL || "86400", 10);
 
 class UrlService {
   /**
@@ -22,17 +25,22 @@ class UrlService {
   }
 
   /**
-   * Find or create short URL
+   * Find or create short URL (Cache Warming)
    */
   static async createShortUrl(fullUrl) {
     const normalized = this.normalizeUrl(fullUrl);
 
     let existing = await ShortUrl.findOne({ full: normalized });
     if (existing) {
+      // Warm cache
+      await this.cacheUrlDoc(existing);
       return { urlDoc: existing, created: false };
     }
 
     const newUrl = await ShortUrl.create({ full: normalized });
+    // Warm cache
+    await this.cacheUrlDoc(newUrl);
+
     return { urlDoc: newUrl, created: true };
   }
 
@@ -44,19 +52,59 @@ class UrlService {
   }
 
   /**
-   * Get URL by short code
+   * Get URL by short code with Cache-Aside Strategy
+   * @param {string} shortCode 
+   * @returns {Promise<Object>}
    */
   static async getByShortCode(shortCode) {
+    const cacheKey = `url:${shortCode}`;
+
+    // 1. Check Redis Cache
+    if (getIsRedisConnected()) {
+      try {
+        const cachedData = await redis.get(cacheKey);
+        if (cachedData) {
+          const parsed = JSON.parse(cachedData);
+          parsed.isCached = true; // Telemetry indicator for Cache Hit
+          return parsed;
+        }
+      } catch (err) {
+        console.warn(`[Redis Read Error] ${err.message}. Falling back to DB.`);
+      }
+    }
+
+    // 2. Cache Miss -> Query MongoDB
     const urlDoc = await ShortUrl.findOne({ short: shortCode });
     if (!urlDoc) {
       throw new AppError("Short URL not found", 404);
     }
-    return urlDoc;
+
+    const plainDoc = urlDoc.toObject();
+    plainDoc.isCached = false; // Telemetry indicator for Cache Miss
+
+    // 3. Populate Redis Cache
+    await this.cacheUrlDoc(plainDoc);
+
+    return plainDoc;
+  }
+
+  /**
+   * Helper to write object to Redis cache
+   */
+  static async cacheUrlDoc(doc) {
+    if (!getIsRedisConnected()) return;
+    try {
+      const cacheKey = `url:${doc.short}`;
+      const payload = JSON.stringify(doc);
+      await redis.set(cacheKey, payload, "EX", DEFAULT_CACHE_TTL);
+    } catch (err) {
+      console.warn(`[Redis Write Error] ${err.message}`);
+    }
   }
 
   /**
    * Atomically increment click count using MongoDB $inc
-   * Eliminates race conditions and lost updates under high concurrency.
+   * and update Redis cache to maintain consistency.
    * @param {string} shortCode
    * @returns {Promise<Object>}
    */
@@ -66,10 +114,17 @@ class UrlService {
       { $inc: { clicks: 1 } },
       { new: true, runValidators: true }
     );
+
     if (!updatedDoc) {
       throw new AppError("Short URL not found", 404);
     }
-    return updatedDoc;
+
+    const plainDoc = updatedDoc.toObject();
+
+    // Update Redis cache asynchronously to keep click count in sync
+    await this.cacheUrlDoc(plainDoc);
+
+    return plainDoc;
   }
 }
 

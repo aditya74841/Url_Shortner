@@ -9,13 +9,16 @@
     "dev": "nodemon server.js",
     "devStart": "nodemon server.js",
     "verify-indexes": "node scripts/verifyIndexes.js",
-    "test-concurrency": "node scripts/testConcurrency.js"
+    "test-concurrency": "node scripts/testConcurrency.js",
+    "test-cache": "node scripts/testCache.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "dotenv": "^16.5.0",
     "express": "^4.18.2",
+    "ioredis": "^6.0.0",
+    "ioredis-mock": "^8.13.1",
     "mongoose": "^6.8.3"
   },
   "devDependencies": {

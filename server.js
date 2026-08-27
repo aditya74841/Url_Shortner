@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import connectDB from "./src/config/db.js";
+import { initRedis } from "./src/config/redis.js";
 import app from "./src/app.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,8 +17,9 @@ process.on("uncaughtException", (err) => {
   process.exit(1);
 });
 
-// Connect Database
+// Connect Database & Cache
 connectDB();
+initRedis();
 
 const PORT = process.env.PORT || 5000;
 
