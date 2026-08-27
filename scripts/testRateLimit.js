@@ -20,12 +20,12 @@ async function runRateLimitTest() {
   const server = app.listen(PORT);
 
   console.log(`\n======================================================`);
-  console.log(`🔒 STAGE 5: REDIS SLIDING WINDOW RATE LIMITER BENCHMARK`);
+  console.log(`🔒 STAGE 5: REDIS TOKEN BUCKET RATE LIMITER BENCHMARK`);
   console.log(`======================================================`);
-  console.log(`Testing POST /api/v1/urls with Strict Limit = 10 requests / min\n`);
+  console.log(`Testing POST /api/v1/urls with Bucket Capacity = 10 tokens\n`);
 
   // Clear rate limiter key for test runner IP before starting
-  const testIpKey = `rl:write:127.0.0.1`;
+  const testIpKey = `tb:write:127.0.0.1`;
   await redis.del(testIpKey);
 
   const TOTAL_REQUESTS = 15;
@@ -33,14 +33,14 @@ async function runRateLimitTest() {
   let blockedCount = 0;
 
   for (let i = 1; i <= TOTAL_REQUESTS; i++) {
-    const response = await makePostRequest(PORT, `https://rate-limit-test-${i}.com`);
+    const response = await makePostRequest(PORT, `https://token-bucket-test-${i}.com`);
     
     const limit = response.headers["x-ratelimit-limit"];
     const remaining = response.headers["x-ratelimit-remaining"];
 
     if (response.statusCode === 201 || response.statusCode === 200) {
       allowedCount++;
-      console.log(`Request #${i}: Allowed ✅ (Status: ${response.statusCode}, Remaining: ${remaining}/${limit})`);
+      console.log(`Request #${i}: Allowed ✅ (Status: ${response.statusCode}, Tokens Remaining: ${remaining}/${limit})`);
     } else if (response.statusCode === 429) {
       blockedCount++;
       console.log(`Request #${i}: BLOCKED ❌ (Status: 429 Too Many Requests, Retry-After: ${response.headers["retry-after"]}s)`);
@@ -57,7 +57,7 @@ async function runRateLimitTest() {
   console.log(`------------------------------------------------------`);
 
   if (allowedCount === 10 && blockedCount === 5) {
-    console.log(`\n✅ REDIS SLIDING WINDOW RATE LIMITER VERIFIED 100% SUCCESSFUL!\n`);
+    console.log(`\n✅ REDIS TOKEN BUCKET RATE LIMITER VERIFIED 100% SUCCESSFUL!\n`);
   } else {
     console.error(`\n❌ RATE LIMITER VERIFICATION FAILED!`);
     process.exitCode = 1;

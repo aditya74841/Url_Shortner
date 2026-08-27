@@ -1,21 +1,20 @@
 import redis, { getIsRedisConnected } from "../config/redis.js";
-import AppError from "../utils/appError.js";
 
 /**
- * Redis Sliding Window Rate Limiter Middleware Factory
- * Uses Redis Sorted Sets (ZSET) to track request timestamps within a sliding time window.
+ * Token Bucket Rate Limiter Middleware Factory
+ * Uses Redis Hash to track token balance and last refill timestamp.
  * 
  * @param {Object} options
- * @param {number} options.windowMs - Time window in milliseconds (e.g., 60000 for 1 minute)
- * @param {number} options.maxRequests - Maximum requests allowed within windowMs
- * @param {string} options.keyPrefix - Prefix for Redis key (e.g., "rl:write:")
+ * @param {number} options.capacity - Maximum bucket size (e.g., 10 tokens)
+ * @param {number} options.refillRatePerSec - Tokens refilled per second (e.g., 10 / 60)
+ * @param {string} options.keyPrefix - Prefix for Redis key
  * @param {string} options.message - Custom error message for HTTP 429
  */
-export const createSlidingWindowRateLimiter = ({
-  windowMs = 60000,
-  maxRequests = 10,
-  keyPrefix = "rl:default:",
-  message = "Too many requests. Please try again later.",
+export const createTokenBucketRateLimiter = ({
+  capacity = 10,
+  refillRatePerSec = 10 / 60,
+  keyPrefix = "tb:default:",
+  message = "Too many requests. Token bucket exhausted.",
 }) => {
   return async (req, res, next) => {
     // If Redis is unavailable, bypass rate limiter gracefully (Fallback)
@@ -23,57 +22,59 @@ export const createSlidingWindowRateLimiter = ({
       return next();
     }
 
-    // Extract client IP address safely
-    const clientIp = req.headers["x-forwarded-for"]?.split(",")[0].trim() || req.socket.remoteAddress || req.ip || "unknown";
+    const clientIp = req.headers["x-forwarded-for"]?.split(",")[0].trim() 
+                  || req.socket.remoteAddress 
+                  || req.ip 
+                  || "unknown";
     const redisKey = `${keyPrefix}${clientIp}`;
-
     const now = Date.now();
-    const windowStart = now - windowMs;
-    const windowSeconds = Math.ceil(windowMs / 1000);
 
     try {
-      // Execute Redis Pipeline for atomic sliding window evaluation
-      // 1. Remove elements older than windowStart
-      // 2. Add current timestamp to sorted set
-      // 3. Count elements remaining in the sliding window
-      // 4. Set TTL on key to auto-clean inactive keys
-      const uniqueMember = `${now}-${Math.random()}`;
+      // Fetch current token state from Redis Hash
+      const [tokensStr, lastRefillStr] = await redis.hmget(redisKey, "tokens", "lastRefill");
 
-      const multi = redis.multi();
-      multi.zremrangebyscore(redisKey, 0, windowStart);
-      multi.zadd(redisKey, now, uniqueMember);
-      multi.zcard(redisKey);
-      multi.expire(redisKey, windowSeconds);
+      let tokens = tokensStr !== null ? parseFloat(tokensStr) : capacity;
+      let lastRefill = lastRefillStr !== null ? parseInt(lastRefillStr, 10) : now;
 
-      const results = await multi.exec();
+      // Calculate refilled tokens based on elapsed time
+      const elapsedSec = (now - lastRefill) / 1000;
+      const refilledTokens = elapsedSec * refillRatePerSec;
 
-      // results[2][1] contains the count from zcard
-      const currentRequestCount = results[2][1];
+      // Cap at max capacity
+      tokens = Math.min(capacity, tokens + refilledTokens);
+      lastRefill = now;
 
-      const remaining = Math.max(0, maxRequests - currentRequestCount);
-      const resetTimeSeconds = Math.ceil((now + windowMs) / 1000);
+      const windowSeconds = Math.ceil(capacity / refillRatePerSec);
 
-      // Set standard Rate Limit Headers
-      res.setHeader("X-RateLimit-Limit", maxRequests);
-      res.setHeader("X-RateLimit-Remaining", remaining);
-      res.setHeader("X-RateLimit-Reset", resetTimeSeconds);
+      if (tokens >= 1) {
+        // Consume 1 token
+        tokens -= 1;
 
-      // Block request if limit is exceeded
-      if (currentRequestCount > maxRequests) {
-        const retryAfterSeconds = Math.ceil(windowMs / 1000);
-        res.setHeader("Retry-After", retryAfterSeconds);
+        const multi = redis.multi();
+        multi.hset(redisKey, "tokens", tokens, "lastRefill", lastRefill);
+        multi.expire(redisKey, windowSeconds);
+        await multi.exec();
+
+        res.setHeader("X-RateLimit-Limit", capacity);
+        res.setHeader("X-RateLimit-Remaining", Math.floor(tokens));
+        return next();
+      } else {
+        // Token bucket empty: Calculate wait time until 1 token is available
+        const secondsToWait = Math.ceil((1 - tokens) / refillRatePerSec);
+
+        res.setHeader("X-RateLimit-Limit", capacity);
+        res.setHeader("X-RateLimit-Remaining", 0);
+        res.setHeader("Retry-After", secondsToWait);
 
         return res.status(429).json({
           status: "fail",
           statusCode: 429,
           message,
-          retryAfter: `${retryAfterSeconds} seconds`,
+          retryAfter: `${secondsToWait} seconds`,
         });
       }
-
-      next();
     } catch (err) {
-      console.warn(`[RateLimiter Warning] ${err.message}. Bypassing rate limit.`);
+      console.warn(`[TokenBucket Warning] ${err.message}. Bypassing rate limit.`);
       next();
     }
   };
@@ -81,22 +82,22 @@ export const createSlidingWindowRateLimiter = ({
 
 /**
  * Strict Rate Limiter for Write Operations (POST /api/v1/urls)
- * Limit: 10 URL creations per 1 minute per IP
+ * Token Bucket Capacity: 10 tokens (refills 10 tokens / 60 sec)
  */
-export const strictWriteRateLimiter = createSlidingWindowRateLimiter({
-  windowMs: 60000, // 1 minute
-  maxRequests: 10,
-  keyPrefix: "rl:write:",
-  message: "Too many URLs created from this IP. Please wait 1 minute before trying again.",
+export const strictWriteRateLimiter = createTokenBucketRateLimiter({
+  capacity: 10,
+  refillRatePerSec: 10 / 60,
+  keyPrefix: "tb:write:",
+  message: "Too many URLs created. Token bucket empty, please wait before trying again.",
 });
 
 /**
  * Generous Rate Limiter for Read Operations & Redirection (GET /:shortUrl)
- * Limit: 100 redirects per 1 minute per IP
+ * Token Bucket Capacity: 100 tokens (refills 100 tokens / 60 sec)
  */
-export const readRedirectRateLimiter = createSlidingWindowRateLimiter({
-  windowMs: 60000, // 1 minute
-  maxRequests: 100,
-  keyPrefix: "rl:read:",
-  message: "Too many redirection requests from this IP. Please slow down.",
+export const readRedirectRateLimiter = createTokenBucketRateLimiter({
+  capacity: 100,
+  refillRatePerSec: 100 / 60,
+  keyPrefix: "tb:read:",
+  message: "Too many redirection requests. Token bucket empty, please slow down.",
 });
