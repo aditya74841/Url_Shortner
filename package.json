@@ -14,7 +14,8 @@
     "test-rate-limit": "node scripts/testRateLimit.js",
     "test-queue": "node scripts/testQueue.js",
     "test-worker": "node scripts/testWorker.js",
-    "test-idempotency": "node scripts/testIdempotency.js"
+    "test-idempotency": "node scripts/testIdempotency.js",
+    "test-cluster": "node scripts/testCluster.js"
   },
   "author": "",
   "license": "ISC",
