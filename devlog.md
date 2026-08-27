@@ -69,3 +69,28 @@ i want to write more about this
 For redis Url i am using upstash because it is giving us the free tier
 
 ## THIS IS THE SIXTH PHASE OF THE URL SHORTNER PROJECT.
+
+In this step we implement the rate limiting in our application
+
+There are four types of rate limiting we can implemnet
+
+1. Fixed window
+2. Sliding window
+3. Token bucket
+4. Leaky bucket
+
+So i have implemented the sliding window rate limiting
+But when i learn about the rate limiting the Token Butcket is more feasible because sliding window is little expesive and it checks every time the user make a request
+
+But Token Butcket is not like this
+
+Token Bucket is simple a bucket of token every request descrease 1 token adn every second one token input into the bucket and it donot increase the size of the bucket
+
+And leacky bucket means it provide the controlled output
+In abosrbs the the extra request are throw out from the bucket
+
+But The Token Bucket provide the controlled output
+
+and fixed window is simple every minute per request
+
+## THIS IS THE SEVENTH PHASE OF THE URL SHORTNER PROJECT.

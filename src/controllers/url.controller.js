@@ -1,4 +1,5 @@
 import UrlService from "../services/url.service.js";
+import { ClickQueueService } from "../services/queue.service.js";
 import catchAsync from "../utils/catchAsync.js";
 
 /**
@@ -58,26 +59,48 @@ export const getUrlStats = catchAsync(async (req, res) => {
 });
 
 /**
- * Register click endpoint (Atomic Increment)
+ * Register click endpoint (API mode)
  * POST /api/v1/urls/:shortUrl/click
  */
 export const registerClickApi = catchAsync(async (req, res) => {
   const { shortUrl } = req.params;
+  
+  // 1. Push click event to Redis Queue asynchronously
+  const clientIp = req.headers["x-forwarded-for"]?.split(",")[0].trim() || req.socket.remoteAddress || req.ip || "unknown";
+  const userAgent = req.headers["user-agent"] || "unknown";
+  ClickQueueService.pushClickEvent({ shortCode: shortUrl, ip: clientIp, userAgent });
+
+  // 2. Also update live doc synchronously if requested via API
   const updatedDoc = await UrlService.recordClick(shortUrl);
 
   res.status(200).json({
     status: "success",
     clicks: updatedDoc.clicks,
+    queued: true,
   });
 });
 
 /**
- * Perform HTTP Redirection with Atomic Click Tracking
+ * Perform Non-Blocking Asynchronous HTTP 302 Redirection
  * GET /:shortUrl
  */
 export const redirectToFullUrl = catchAsync(async (req, res) => {
   const { shortUrl } = req.params;
-  const updatedDoc = await UrlService.recordClick(shortUrl);
 
-  res.redirect(302, updatedDoc.full);
+  // 1. Resolve URL target instantly (served from Redis Cache in < 1ms)
+  const urlDoc = await UrlService.getByShortCode(shortUrl);
+
+  // 2. Asynchronously push click event to Redis Queue (Non-Blocking fire-and-forget)
+  const clientIp = req.headers["x-forwarded-for"]?.split(",")[0].trim() || req.socket.remoteAddress || req.ip || "unknown";
+  const userAgent = req.headers["user-agent"] || "unknown";
+
+  ClickQueueService.pushClickEvent({
+    shortCode: shortUrl,
+    ip: clientIp,
+    userAgent,
+    timestamp: Date.now(),
+  }).catch((err) => console.warn(`[Queue Error] ${err.message}`));
+
+  // 3. Return HTTP 302 Redirect instantly (< 1ms Latency!)
+  res.redirect(302, urlDoc.full);
 });

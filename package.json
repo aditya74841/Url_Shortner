@@ -11,7 +11,8 @@
     "verify-indexes": "node scripts/verifyIndexes.js",
     "test-concurrency": "node scripts/testConcurrency.js",
     "test-cache": "node scripts/testCache.js",
-    "test-rate-limit": "node scripts/testRateLimit.js"
+    "test-rate-limit": "node scripts/testRateLimit.js",
+    "test-queue": "node scripts/testQueue.js"
   },
   "author": "",
   "license": "ISC",
