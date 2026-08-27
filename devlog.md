@@ -124,3 +124,38 @@ and bulkwrite the result into the database
 So 1000 events in 1 DB operation
 
 1,000 Clicks ──► 1 BulkWrite Operation ──► 1 Disk Write ──► Minimal CPU & Disk I/O Load!
+
+## THIS IS THE NINTH PHASE OF THE URL SHORTNER PROJECT.
+
+In this phase we handle worker failure and idempotency
+
+What happens if worker crashes while processing batch?
+If worker pops event from queue and crashes before updating MongoDB then data is lost.
+Or if worker retries the batch then click count is added twice.
+
+So to resolve this we implement two things:
+
+1. Reliable Queue (RPOPLPUSH):
+When worker takes events from main queue it moves them to processing queue.
+If worker crashes the remaining events in main queue are safe and in-flight events in processing queue are recovered on worker reboot.
+
+2. Event Deduplication (Idempotency):
+We attach unique eventId (UUID) to every click event.
+Before processing worker checks Redis SET NX key for eventId.
+If eventId is duplicate worker skips it. So click count is never added twice.
+
+## THIS IS THE TENTH PHASE OF THE URL SHORTNER PROJECT.
+
+In this phase we implement multiple API servers and horizontal scaling
+
+Node.js runs on 1 single CPU core by default.
+If server has 4 or 8 CPU cores then remaining cores sit idle.
+
+So to resolve this we use Node cluster mode (src/cluster.js) and PM2 cluster.
+It spawns 1 worker process per CPU core.
+
+We also make API servers stateless.
+All session state rate limits and queues are stored in Redis and MongoDB.
+So user request can land on any API worker node and get same response.
+
+We also added /health endpoint to check MongoDB Redis and queue status.
