@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import path from "path";
 import http from "http";
 import { fileURLToPath } from "url";
-import app from "../src/app.js";
+import { buildApp } from "../src/app.js";
 import connectDB from "../src/config/db.js";
 import { initRedis } from "../src/config/redis.js";
 
@@ -20,13 +20,14 @@ async function runClusterTest() {
   console.log(`🌐 STAGE 11: MULTIPLE API SERVERS & HORIZONTAL SCALING BENCHMARK`);
   console.log(`======================================================\n`);
 
-  // 1. Spin up 3 parallel Express server instances representing API #1, API #2, API #3
+  // 1. Spin up 3 parallel Fastify server instances representing API #1, API #2, API #3
   const PORTS = [5081, 5082, 5083];
-  const servers = [];
+  const appInstances = [];
 
   for (const port of PORTS) {
-    const server = app.listen(port);
-    servers.push({ port, server });
+    const instance = buildApp();
+    await instance.listen({ port, host: "0.0.0.0" });
+    appInstances.push(instance);
   }
 
   console.log(`[1] Booted 3 Independent API Server Instances:`);
@@ -36,7 +37,7 @@ async function runClusterTest() {
 
   // 2. Query /health on all 3 instances to verify process PIDs & health readiness
   console.log(`\n[2] Verifying Health & Liveness Probes across all 3 API Nodes...`);
-  for (const { port } of servers) {
+  for (const port of PORTS) {
     const health = await fetchJson(`http://127.0.0.1:${port}/health`);
     console.log(`    - Node Port ${port} | Status: ${health.status} | PID: ${health.process.pid} | Mongo: ${health.services.mongodb.status} | Redis: ${health.services.redis.status}`);
   }
@@ -77,8 +78,8 @@ async function runClusterTest() {
   }
 
   // Cleanup
-  for (const { server } of servers) {
-    server.close();
+  for (const instance of appInstances) {
+    await instance.close();
   }
   await mongoose.disconnect();
 }

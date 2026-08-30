@@ -1,19 +1,16 @@
-import express from "express";
 import apiUrlRoutes from "./api/url.routes.js";
 import { redirectToFullUrl } from "../controllers/url.controller.js";
 import { getHealthStatus } from "../controllers/health.controller.js";
 import { readRedirectRateLimiter } from "../middlewares/rateLimiter.middleware.js";
 
-const router = express.Router();
+export default async function routes(fastify, options) {
+  // Liveness / Readiness Health Probes
+  fastify.get("/health", getHealthStatus);
+  fastify.get("/api/v1/health", getHealthStatus);
 
-// Liveness / Readiness Health Probes
-router.get("/health", getHealthStatus);
-router.get("/api/v1/health", getHealthStatus);
+  // Mount REST API routes
+  fastify.register(apiUrlRoutes, { prefix: "/api/v1/urls" });
 
-// Mount REST API routes
-router.use("/api/v1/urls", apiUrlRoutes);
-
-// Short URL HTTP Redirection endpoint with Rate Limiting
-router.get("/:shortUrl", readRedirectRateLimiter, redirectToFullUrl);
-
-export default router;
+  // Short URL HTTP Redirection endpoint with Rate Limiting
+  fastify.get("/:shortUrl", { preHandler: [readRedirectRateLimiter] }, redirectToFullUrl);
+}

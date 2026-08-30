@@ -1,6 +1,8 @@
 import ShortUrl from "../models/url.model.js";
+import UrlAnalytics from "../models/analytics.model.js";
 import { ClickQueueService } from "../services/queue.service.js";
 import UrlService from "../services/url.service.js";
+import { parseUserAgent, parseReferrer } from "../utils/userAgentParser.js";
 import { logger } from "../utils/logger.js";
 
 /**
@@ -61,7 +63,7 @@ export class AnalyticsWorker {
    * 1. Pops reliable batch using RPOPLPUSH into processing queue
    * 2. Checks eventId deduplication lock (SET NX) to skip duplicate events
    * 3. Aggregates unique click counts by shortCode
-   * 4. Flushes to MongoDB via bulkWrite()
+   * 4. Flushes to MongoDB via bulkWrite() for ShortUrl counts & UrlAnalytics logs
    * 5. Acknowledges and removes processed batch from processing queue
    * 
    * @returns {Promise<{ processed: number, duplicates: number }>} Batch processing report
@@ -80,6 +82,7 @@ export class AnalyticsWorker {
       }
 
       const clickCountsMap = {};
+      const analyticsDocsToInsert = [];
       let uniqueCount = 0;
       let duplicateCount = 0;
 
@@ -95,6 +98,25 @@ export class AnalyticsWorker {
         if (isNewEvent) {
           clickCountsMap[event.shortCode] = (clickCountsMap[event.shortCode] || 0) + 1;
           uniqueCount++;
+
+          // Parse User-Agent & Referrer metadata for rich analytics
+          const { browser, os, device } = parseUserAgent(event.userAgent);
+          const parsedReferrer = parseReferrer(event.referrer);
+
+          analyticsDocsToInsert.push({
+            insertOne: {
+              document: {
+                short: event.shortCode,
+                eventId: event.eventId || `evt-${Date.now()}-${Math.random()}`,
+                ip: event.ip || "127.0.0.1",
+                browser,
+                os,
+                device,
+                referrer: parsedReferrer,
+                timestamp: new Date(event.timestamp || Date.now()),
+              },
+            },
+          });
         } else {
           duplicateCount++;
           logger.info({ eventId: event.eventId, shortCode: event.shortCode, requestId: event.requestId }, `[Analytics Worker] Skipped duplicate event: ${event.eventId}`);
@@ -103,16 +125,19 @@ export class AnalyticsWorker {
 
       const shortCodes = Object.keys(clickCountsMap);
 
-      // 3. Execute MongoDB bulkWrite if new unique events exist
+      // 3. Execute MongoDB bulkWrite for ShortUrl click counts & UrlAnalytics logs
       if (shortCodes.length > 0) {
-        const bulkOperations = shortCodes.map((shortCode) => ({
+        const urlBulkOps = shortCodes.map((shortCode) => ({
           updateOne: {
             filter: { short: shortCode },
             update: { $inc: { clicks: clickCountsMap[shortCode] } },
           },
         }));
 
-        await ShortUrl.bulkWrite(bulkOperations, { ordered: false });
+        await Promise.all([
+          ShortUrl.bulkWrite(urlBulkOps, { ordered: false }),
+          analyticsDocsToInsert.length > 0 ? UrlAnalytics.bulkWrite(analyticsDocsToInsert, { ordered: false }) : Promise.resolve(),
+        ]);
 
         // Refresh Redis cache for updated short codes
         for (const shortCode of shortCodes) {

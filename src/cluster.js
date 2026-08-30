@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const numCPUs = process.env.WORKERS_COUNT
-  ? parseInt(process.env.WORKERS_COUNT, 5)
+  ? parseInt(process.env.WORKERS_COUNT, 10)
   : os.cpus().length;
 
 if (cluster.isPrimary || cluster.isMaster) {

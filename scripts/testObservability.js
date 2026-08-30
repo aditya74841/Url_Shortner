@@ -25,7 +25,7 @@ async function runObservabilityTest() {
   console.log(`======================================================\n`);
 
   const PORT = 5099;
-  const server = app.listen(PORT);
+  await app.listen({ port: PORT, host: "0.0.0.0" });
 
   // 1. Create a test short URL & clear queue
   await ClickQueueService.clearQueue();
@@ -82,7 +82,7 @@ async function runObservabilityTest() {
   }
 
   // Cleanup
-  server.close();
+  await app.close();
   await ClickQueueService.clearQueue();
   await mongoose.disconnect();
 }

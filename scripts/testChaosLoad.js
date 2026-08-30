@@ -25,8 +25,8 @@ async function runChaosLoadTest() {
   console.log(`⚡ STAGE 13: HIGH-CONCURRENCY LOAD & CHAOS BENCHMARK`);
   console.log(`======================================================\n`);
 
-  const PORT = 5097;
-  const server = app.listen(PORT);
+  const PORT = 5098;
+  await app.listen({ port: PORT, host: "0.0.0.0" });
 
   // 1. Create a test short URL & clear queue
   await ClickQueueService.clearQueue();
@@ -100,7 +100,7 @@ async function runChaosLoadTest() {
   }
 
   // Cleanup
-  server.close();
+  await app.close();
   await ClickQueueService.clearQueue();
   await mongoose.disconnect();
 }

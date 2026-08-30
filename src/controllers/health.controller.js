@@ -1,13 +1,12 @@
 import mongoose from "mongoose";
 import { getIsRedisConnected } from "../config/redis.js";
 import { ClickQueueService } from "../services/queue.service.js";
-import catchAsync from "../utils/catchAsync.js";
 
 /**
  * Liveness and Readiness Health Check Endpoint
  * GET /health & GET /api/v1/health
  */
-export const getHealthStatus = catchAsync(async (req, res) => {
+export const getHealthStatus = async (request, reply) => {
   const isMongoConnected = mongoose.connection.readyState === 1;
   const isRedisConnected = getIsRedisConnected();
   const queueLength = await ClickQueueService.getQueueLength();
@@ -16,7 +15,7 @@ export const getHealthStatus = catchAsync(async (req, res) => {
   const isHealthy = isMongoConnected && isRedisConnected;
   const statusCode = isHealthy ? 200 : 503;
 
-  res.status(statusCode).json({
+  return reply.status(statusCode).send({
     status: isHealthy ? "healthy" : "unhealthy",
     timestamp: new Date().toISOString(),
     process: {
@@ -38,4 +37,4 @@ export const getHealthStatus = catchAsync(async (req, res) => {
       },
     },
   });
-});
+};
