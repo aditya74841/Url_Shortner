@@ -18,15 +18,21 @@ const urlSchema = new mongoose.Schema(
       required: true,
       default: 0,
     },
+    clientId: {
+      type: String,
+      default: "anonymous",
+      index: true,
+    },
   },
   {
     timestamps: true,
   }
 );
 
-// Explicit DB Indexing Strategy for O(1) / O(log N) lookups & efficient sorting
+// Explicit DB Indexing Strategy for O(1) / O(log N) lookups & client isolation
 urlSchema.index({ short: 1 }, { unique: true, name: "idx_short_code" });
-urlSchema.index({ full: 1 }, { unique: true, name: "idx_full_url" });
+urlSchema.index({ clientId: 1, full: 1 }, { unique: true, name: "idx_client_full_url" });
+urlSchema.index({ clientId: 1, createdAt: -1 }, { name: "idx_client_created_at_desc" });
 urlSchema.index({ createdAt: -1 }, { name: "idx_created_at_desc" });
 
 export default mongoose.model("ShortUrl", urlSchema);

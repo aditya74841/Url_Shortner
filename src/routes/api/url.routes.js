@@ -9,4 +9,5 @@ export default async function apiUrlRoutes(fastify, options) {
   fastify.get("/:shortUrl/analytics", analyticsController.getRichAnalytics);
   fastify.post("/:shortUrl/click", urlController.registerClickApi);
   fastify.post("/click/:shortUrl", urlController.registerClickApi);
+  fastify.delete("/:shortUrl", urlController.deleteUrl);
 }

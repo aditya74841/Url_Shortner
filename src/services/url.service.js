@@ -1,4 +1,5 @@
 import ShortUrl from "../models/url.model.js";
+import UrlAnalytics from "../models/analytics.model.js";
 import AppError from "../utils/appError.js";
 import redis, { getIsRedisConnected } from "../config/redis.js";
 
@@ -25,19 +26,22 @@ class UrlService {
   }
 
   /**
-   * Find or create short URL (Cache Warming)
+   * Find or create short URL (Cache Warming & Client-Scoped Deduplication)
+   * @param {string} fullUrl
+   * @param {string} [clientId="anonymous"]
    */
-  static async createShortUrl(fullUrl) {
+  static async createShortUrl(fullUrl, clientId = "anonymous") {
     const normalized = this.normalizeUrl(fullUrl);
+    const targetClientId = clientId || "anonymous";
 
-    let existing = await ShortUrl.findOne({ full: normalized });
+    let existing = await ShortUrl.findOne({ full: normalized, clientId: targetClientId });
     if (existing) {
       // Warm cache
       await this.cacheUrlDoc(existing);
       return { urlDoc: existing, created: false };
     }
 
-    const newUrl = await ShortUrl.create({ full: normalized });
+    const newUrl = await ShortUrl.create({ full: normalized, clientId: targetClientId });
     // Warm cache
     await this.cacheUrlDoc(newUrl);
 
@@ -45,10 +49,12 @@ class UrlService {
   }
 
   /**
-   * Get all shortened URLs
+   * Get shortened URLs for a given client
+   * @param {string} [clientId="anonymous"]
    */
-  static async getAllUrls() {
-    return await ShortUrl.find().sort({ createdAt: -1 });
+  static async getAllUrls(clientId = "anonymous") {
+    const targetClientId = clientId || "anonymous";
+    return await ShortUrl.find({ clientId: targetClientId }).sort({ createdAt: -1 });
   }
 
   /**
@@ -125,6 +131,46 @@ class UrlService {
     await this.cacheUrlDoc(plainDoc);
 
     return plainDoc;
+  }
+
+  /**
+   * Delete short URL, evict from Redis cache, and purge click analytics
+   * @param {string} shortCode
+   * @param {string} [clientId="anonymous"]
+   * @returns {Promise<Object>}
+   */
+  static async deleteUrl(shortCode, clientId = "anonymous") {
+    const urlDoc = await ShortUrl.findOne({ short: shortCode });
+    if (!urlDoc) {
+      throw new AppError("Short URL not found", 404);
+    }
+
+    // Ownership check: If link belongs to a specific client and caller is not that client
+    const targetClientId = clientId || "anonymous";
+    if (urlDoc.clientId && urlDoc.clientId !== "anonymous" && urlDoc.clientId !== targetClientId) {
+      throw new AppError("You do not have permission to delete this URL", 403);
+    }
+
+    // Delete from MongoDB
+    await ShortUrl.deleteOne({ _id: urlDoc._id });
+
+    // Evict from Redis Cache
+    if (getIsRedisConnected()) {
+      try {
+        await redis.del(`url:${shortCode}`);
+      } catch (err) {
+        console.warn(`[Redis Evict Error] ${err.message}`);
+      }
+    }
+
+    // Clean up analytics events
+    try {
+      await UrlAnalytics.deleteMany({ short: shortCode });
+    } catch (err) {
+      console.warn(`[Analytics Cleanup Error] ${err.message}`);
+    }
+
+    return urlDoc.toObject();
   }
 }
 

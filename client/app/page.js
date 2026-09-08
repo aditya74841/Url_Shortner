@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUrlStore } from '../store/useUrlStore';
-import { ArrowRight, Copy, Check, AlertCircle, Loader2, CheckCircle2, XCircle, HelpCircle, Link2, BarChart3, ExternalLink, MousePointerClick, RefreshCw, X, Globe, Monitor, Smartphone, Compass, Clock, BarChart2, Zap, Shield, Cpu } from 'lucide-react';
+import { ArrowRight, Copy, Check, AlertCircle, Loader2, CheckCircle2, XCircle, HelpCircle, Link2, BarChart3, ExternalLink, MousePointerClick, RefreshCw, X, Globe, Monitor, Smartphone, Compass, Clock, BarChart2, Zap, Shield, Cpu, Trash2 } from 'lucide-react';
 import { extractHostname, checkDomainResolvable, debounce } from '../lib/urlValidator';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -284,10 +284,23 @@ function UrlShortenerForm() {
 
 // ─── URL List ────────────────────────────────────────────────────────────────
 function UrlList() {
-  const { urls, fetchUrls, loading, fetchAnalytics, copySuccessId, setCopySuccessId } = useUrlStore();
+  const { urls, fetchUrls, loading, fetchAnalytics, deleteUrl, copySuccessId, setCopySuccessId } = useUrlStore();
+  const [deletingId, setDeletingId] = useState(null);
   useEffect(() => { fetchUrls(); }, [fetchUrls]);
 
   const copy = (short) => { navigator.clipboard.writeText(`${BASE}/${short}`); setCopySuccessId(short); };
+
+  const handleDelete = async (short) => {
+    if (!window.confirm(`Are you sure you want to delete /${short}?`)) return;
+    setDeletingId(short);
+    try {
+      await deleteUrl(short);
+    } catch (err) {
+      alert(err.message || 'Failed to delete URL');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div style={{ marginTop: 28 }}>
@@ -309,10 +322,11 @@ function UrlList() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {urls.map((item, idx) => {
           const copied = copySuccessId === item.short;
+          const isDeleting = deletingId === item.short;
           const r = idx === 0, last = idx === urls.length - 1;
           return (
             <div key={item._id || item.short} className="animate-fade-up"
-              style={{ animationDelay: `${idx * 25}ms`, background: C.surface, border: `1px solid ${C.border}`, borderRadius: r && last ? 14 : r ? '14px 14px 4px 4px' : last ? '4px 4px 14px 14px' : 4, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14, transition: 'background 0.1s, box-shadow 0.1s' }}
+              style={{ animationDelay: `${idx * 25}ms`, background: C.surface, border: `1px solid ${C.border}`, borderRadius: r && last ? 14 : r ? '14px 14px 4px 4px' : last ? '4px 4px 14px 14px' : 4, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14, transition: 'background 0.1s, box-shadow 0.1s', opacity: isDeleting ? 0.4 : 1 }}
               onMouseEnter={e => { e.currentTarget.style.background = C.raised; e.currentTarget.style.boxShadow = '0 2px 8px rgba(15,23,42,0.06)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = C.surface; e.currentTarget.style.boxShadow = 'none'; }}
             >
@@ -337,6 +351,16 @@ function UrlList() {
                   onMouseLeave={e => { e.currentTarget.style.background = C.raised; e.currentTarget.style.color = C.muted; e.currentTarget.style.borderColor = C.border; }}
                 >
                   <BarChart3 size={13} />Analytics
+                </button>
+                <button
+                  onClick={() => handleDelete(item.short)}
+                  disabled={isDeleting}
+                  title="Delete link"
+                  style={btnGhost({ color: C.red, borderColor: C.redBd, background: C.redLt })}
+                  onMouseEnter={e => { e.currentTarget.style.background = C.red; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = C.red; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = C.redLt; e.currentTarget.style.color = C.red; e.currentTarget.style.borderColor = C.redBd; }}
+                >
+                  {isDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                 </button>
               </div>
             </div>

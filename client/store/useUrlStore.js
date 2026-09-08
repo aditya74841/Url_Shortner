@@ -70,5 +70,20 @@ export const useUrlStore = create((set, get) => ({
     }
   },
 
+  deleteUrl: async (shortCode) => {
+    try {
+      await api.delete(`/api/v1/urls/${shortCode}`);
+      set((state) => ({
+        urls: state.urls.filter((u) => u.short !== shortCode),
+        recentUrl: state.recentUrl?.short === shortCode ? null : state.recentUrl,
+      }));
+    } catch (err) {
+      console.error('Delete URL Error:', err);
+      const errMsg = err.response?.data?.message || 'Failed to delete URL';
+      set({ error: errMsg });
+      throw new Error(errMsg);
+    }
+  },
+
   closeAnalytics: () => set({ isAnalyticsOpen: false, analyticsData: null }),
 }));

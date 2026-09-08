@@ -17,6 +17,7 @@ export const buildApp = () => {
   fastify.register(cors, {
     origin: true, // Allow all origins in dev or specify process.env.CLIENT_URL
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Client-ID", "x-client-id", "x-request-id"],
     credentials: true,
   });
 

@@ -1,15 +1,28 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useUrlStore } from '../store/useUrlStore';
-import { Copy, Check, BarChart3, ExternalLink, RefreshCw, MousePointerClick } from 'lucide-react';
+import { Copy, Check, BarChart3, ExternalLink, RefreshCw, MousePointerClick, Trash2, Loader2 } from 'lucide-react';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export default function UrlList() {
-  const { urls, fetchUrls, loading, fetchAnalytics, copySuccessId, setCopySuccessId } = useUrlStore();
+  const { urls, fetchUrls, loading, fetchAnalytics, deleteUrl, copySuccessId, setCopySuccessId } = useUrlStore();
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => { fetchUrls(); }, [fetchUrls]);
+
+  const handleDelete = async (short) => {
+    if (!window.confirm(`Are you sure you want to delete /${short}?`)) return;
+    setDeletingId(short);
+    try {
+      await deleteUrl(short);
+    } catch (err) {
+      alert(err.message || 'Failed to delete URL');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleCopy = (short) => {
     navigator.clipboard.writeText(`${BASE}/${short}`);
@@ -192,6 +205,32 @@ export default function UrlList() {
                 >
                   <BarChart3 size={13} />
                   Analytics
+                </button>
+
+                {/* Delete */}
+                <button
+                  onClick={() => handleDelete(item.short)}
+                  disabled={deletingId === item.short}
+                  title="Delete short link"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '5px 11px',
+                    borderRadius: 7,
+                    border: '1px solid #FECACA',
+                    background: '#FFF5F5',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: '#DC2626',
+                    cursor: deletingId === item.short ? 'not-allowed' : 'pointer',
+                    opacity: deletingId === item.short ? 0.5 : 1,
+                    transition: 'all 0.12s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#DC2626'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#DC2626'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#FFF5F5'; e.currentTarget.style.color = '#DC2626'; e.currentTarget.style.borderColor = '#FECACA'; }}
+                >
+                  {deletingId === item.short ? <Loader2 size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Trash2 size={13} />}
                 </button>
               </div>
             </div>

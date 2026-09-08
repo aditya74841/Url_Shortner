@@ -7,7 +7,8 @@ import { ClickQueueService } from "../services/queue.service.js";
  */
 export const createUrl = async (request, reply) => {
   const { fullUrl } = request.body || {};
-  const { urlDoc, created } = await UrlService.createShortUrl(fullUrl);
+  const clientId = request.headers["x-client-id"] || "anonymous";
+  const { urlDoc, created } = await UrlService.createShortUrl(fullUrl, clientId);
 
   const statusCode = created ? 201 : 200;
   const host = request.headers.host || "localhost:5000";
@@ -20,6 +21,7 @@ export const createUrl = async (request, reply) => {
       full: urlDoc.full,
       short: urlDoc.short,
       clicks: urlDoc.clicks,
+      clientId: urlDoc.clientId,
       shortUrl: `${protocol}://${host}/${urlDoc.short}`,
       createdAt: urlDoc.createdAt,
     },
@@ -27,11 +29,12 @@ export const createUrl = async (request, reply) => {
 };
 
 /**
- * Get all short URLs
+ * Get all short URLs for the current client
  * GET /api/v1/urls
  */
 export const getAllUrls = async (request, reply) => {
-  const urls = await UrlService.getAllUrls();
+  const clientId = request.headers["x-client-id"] || "anonymous";
+  const urls = await UrlService.getAllUrls(clientId);
   return reply.status(200).send({
     status: "success",
     results: urls.length,
@@ -112,4 +115,25 @@ export const redirectToFullUrl = async (request, reply) => {
 
   // 3. Fastify HTTP 302 Redirect instantly
   return reply.redirect(urlDoc.full, 302);
+};
+
+/**
+ * Delete a short URL
+ * DELETE /api/v1/urls/:shortUrl
+ */
+export const deleteUrl = async (request, reply) => {
+  const { shortUrl } = request.params;
+  const clientId = request.headers["x-client-id"] || "anonymous";
+
+  const deletedDoc = await UrlService.deleteUrl(shortUrl, clientId);
+
+  return reply.status(200).send({
+    status: "success",
+    message: "Short URL deleted successfully",
+    data: {
+      id: deletedDoc._id,
+      short: deletedDoc.short,
+      full: deletedDoc.full,
+    },
+  });
 };
